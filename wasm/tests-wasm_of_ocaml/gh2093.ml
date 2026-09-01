@@ -67,5 +67,4 @@ let () =
                   Printf.printf "handled E\n";
                   continue k ())
           | _ -> None)
-    };
-  ()
+    }

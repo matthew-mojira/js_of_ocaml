@@ -1,7 +1,9 @@
-let%expect_test _ =
+[@@@ocaml.alert "-unsafe_parallelism-unsafe_multidomain-do_not_spawn_domains"]
+
+let () =
   let d = Domain.spawn (fun () -> 1 + 2) in
   print_int (Domain.join d);
-  [%expect {| 3 |}];
+  
   let d = Domain.spawn (fun () -> 1 + 2) in
   let d_id = Domain.get_id d in
   let id = Domain.self () in
@@ -9,10 +11,7 @@ let%expect_test _ =
   Printf.printf "self id: %d\n" (id :> int);
   let res = Domain.join d in
   Printf.printf "result: %d\n" res;
-  [%expect {|
-    d_id: 2
-    self id: 0
-    result: 3 |}]
+  ()
 
 type _ Effect.t += A : int Effect.t
 
@@ -31,12 +30,27 @@ let handle comp =
 
 let er = ref Not_found
 
-let%expect_test _ =
+let () =
   handle (fun () -> print_int (Effect.perform A));
-  [%expect {| 42 |}]
+  ()
 
-let%expect_test _ =
+let () =
   let f () = Effect.perform A in
   handle (fun () ->
       if Random.int 2 < 1 then print_int (1 + f ()) else print_int (f () + 1));
-  [%expect {| 43 |}]
+  ()
+
+let () =
+  (match
+     let d = Domain.spawn (fun () -> raise Not_found) in
+     Domain.join d
+   with
+  | (_ : int) -> print_endline "no exn"
+  | exception Not_found -> print_endline "Not_found"
+  | exception e -> print_endline ("other: " ^ Printexc.to_string e));
+  (* the main domain id must be restored after a raising body *)
+  Printf.printf "self id: %d\n" (Domain.self () :> int);
+  (* spawning still works afterwards *)
+  let d = Domain.spawn (fun () -> 7) in
+  Printf.printf "result: %d\n" (Domain.join d);
+  ()

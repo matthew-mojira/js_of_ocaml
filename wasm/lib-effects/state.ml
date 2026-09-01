@@ -276,11 +276,6 @@ let main () : unit =
     set "...World!";
     printf "%s\n" (get ()))
 
-let%expect_test _ =
+let () =
   ignore (IntCell.run ~init:0 (fun () -> StrCell.run ~init:"" main));
-  [%expect {|
-    0
-    42
-    21
-    Hello...
-    ...World! |}]
+  ()

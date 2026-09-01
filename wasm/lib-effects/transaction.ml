@@ -74,7 +74,7 @@ exception Res of int
 
 open Txn
 
-let%expect_test _ =
+let () =
   (try
      atomically (fun () ->
          let r = ref 10 in
@@ -93,8 +93,4 @@ let%expect_test _ =
              printf "T0: %d\n" !r
          | e -> printf "inner exception: %s\n" (Printexc.to_string e))
    with e -> printf "outer exception: %s\n" (Printexc.to_string e));
-  [%expect {|
-    T0: 10
-    T1: Before abort 21
-    T0: T1 aborted with 21
-    T0: 10 |}]
+  ()

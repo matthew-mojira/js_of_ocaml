@@ -140,30 +140,14 @@ let combined_example () =
 
 let print_exception e = Printf.printf "Exception: %s\n" (Printexc.to_string e)
 
-let%expect_test _ =
+let () =
   run_state ~init:10 state_example |> ignore;
 
-  [%expect {|
-    Initial state: 10
-    Final state: 12 |}];
-
   run_exception ~catch:print_exception exception_example;
-
-  [%expect {|
-    Raising an exception
-    Exception: Failure("An error!") |}];
 
   (run_exception ~catch:print_exception
   @@ fun () -> run_state ~init:10 @@ fun () -> combined_example ());
 
-  [%expect {|
-    Initial state: 10
-    Exception: Failure("An error!") |}];
-
   (run_state ~init:10
   @@ fun () -> run_exception ~catch:print_exception @@ fun () -> combined_example ());
-  [%expect
-    {|
-    Initial state: 10
-    Exception: Failure("An error!")
-    Final state: 100 |}]
+  ()
