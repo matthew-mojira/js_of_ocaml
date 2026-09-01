@@ -6,17 +6,47 @@ eval $(opam env)
 pass=0
 fail=0
 
+# run <program.ml> [args...]
+#
+# Produces the reference output that compare_outputs.sh diffs the Wasm runs
+# against.  This goes through ocamlc rather than the `ocaml` interpreter so the
+# reference comes from the same bytecode the Wasm artifacts are compiled from;
+# script mode differs in, for instance, how it qualifies exception names.
 run() {
-    local file="$WASM_DIR/$1"
+    local prog="${1%.ml}"
     printf "%-55s " "$1"
-    ocaml "$file" > "$file.out" 2>&1
-    if [ $? -eq 0 ]; then
+    if compile_and_run "$prog" "$prog.ml" --; then
         echo "OK"
         ((pass++))
     else
         echo "FAIL"
         ((fail++))
     fi
+}
+
+# compile_and_run <program> <source.ml>... -- [args...]
+#
+# Compiles the sources to bytecode, runs it with the given arguments and saves
+# the combined output to <program>.ml.out.  Returns the exit status of the run.
+compile_and_run() {
+    local prog="$1"
+    shift
+    local dir="$WASM_DIR/$(dirname "$prog")"
+    local byte="$WASM_DIR/$prog.byte"
+    local srcs=()
+    while [ "$1" != "--" ]; do srcs+=("$WASM_DIR/$1"); shift; done
+    shift
+
+    local status
+    if ocamlc -I "$dir" -o "$byte" "${srcs[@]}" > /dev/null 2>&1; then
+        "$byte" "$@" > "$WASM_DIR/$prog.ml.out" 2>&1
+        status=$?
+    else
+        echo "compilation failed" > "$WASM_DIR/$prog.ml.out"
+        status=1
+    fi
+    rm -f "$byte" "$dir"/*.cmi "$dir"/*.cmo
+    return $status
 }
 
 # effects/
@@ -57,32 +87,31 @@ run effect-syntax/test11.ml
 run effect-syntax/tutorial.ml
 
 # lib-effects/
-# requires Jsoo_runtime — jsoo-only API, not runnable with plain ocaml
-#run lib-effects/assume_no_perform.ml
-#run lib-effects/assume_no_perform_nested_handler.ml
-#run lib-effects/assume_no_perform_unhandled.ml
-
-# requires sched.ml as a dependency
-ocaml "$WASM_DIR/lib-effects/sched.ml" "$WASM_DIR/lib-effects/concurrent.ml" \
-    > "$WASM_DIR/lib-effects/concurrent.ml.out" 2>&1 \
-    && { echo "lib-effects/concurrent.ml                              OK"; ((pass++)); } \
-    || { echo "lib-effects/concurrent.ml                              FAIL"; ((fail++)); }
-
+# assume_no_perform{,_unhandled,_nested_handler}.ml need the jsoo-only
+# Jsoo_runtime API and are not runnable with plain ocaml.
+# multi-file: concurrent.ml uses the scheduler defined in sched.ml
+printf "%-55s " "lib-effects/concurrent.ml"
+if compile_and_run lib-effects/concurrent \
+       lib-effects/sched.ml lib-effects/concurrent.ml --; then
+    echo "OK"; ((pass++))
+else
+    echo "FAIL"; ((fail++))
+fi
 # requires CLI arguments: depth ops
-ocaml "$WASM_DIR/lib-effects/deep_state.ml" 3 100 \
-    > "$WASM_DIR/lib-effects/deep_state.ml.out" 2>&1 \
-    && { echo "lib-effects/deep_state.ml                              OK"; ((pass++)); } \
-    || { echo "lib-effects/deep_state.ml                              FAIL"; ((fail++)); }
-
-# requires ppx_expect + dune inline test runner
-#run lib-effects/dyn_wind.ml
+printf "%-55s " "lib-effects/deep_state.ml"
+if compile_and_run lib-effects/deep_state lib-effects/deep_state.ml -- 3 100; then
+    echo "OK"; ((pass++))
+else
+    echo "FAIL"; ((fail++))
+fi
+run lib-effects/dyn_wind.ml
 run lib-effects/effects.ml
-#run lib-effects/eratosthenes.ml
-#run lib-effects/reify_reflect.ml
+run lib-effects/eratosthenes.ml
+run lib-effects/reify_reflect.ml
 run lib-effects/sched.ml
-#run lib-effects/state.ml
-#run lib-effects/test_domain.ml
-#run lib-effects/transaction.ml
+run lib-effects/state.ml
+run lib-effects/test_domain.ml
+run lib-effects/transaction.ml
 
 # examples/
 run examples/ask.ml
@@ -92,6 +121,9 @@ run examples/hello.ml
 run examples/many_stacks.ml
 run examples/random_jump.ml
 run examples/simple_handler.ml
+
+# tests-wasm_of_ocaml/
+run tests-wasm_of_ocaml/gh2093.ml
 
 echo ""
 echo "$pass passed, $fail failed"

@@ -3,20 +3,37 @@
 WASM_DIR="$(dirname "$0")"
 WIZENG="wizeng.x86-64-linux --ext:legacy-eh --ext:stack-switching"
 
+# Every program is built for both effects backends, so run both.
+BACKENDS="native cps"
+
 pass=0
 fail=0
+missing=0
 
+# run <program.ml> [args...]
+#
+# Programs built from several sources (concurrent.ml, which needs sched.ml)
+# are linked into a single Wasm module by build.sh, so they are run here
+# exactly like any single-source program.
 run() {
-    local file="$WASM_DIR/${1%.ml}.wasm"
-    local out="$WASM_DIR/${1%.ml}.wasm.out"
-    printf "%-55s " "$1"
-    if $WIZENG "$file" "${@:2}" > "$out" 2>&1; then
-        echo "OK"
-        ((pass++))
-    else
-        echo "FAIL"
-        ((fail++))
-    fi
+    local prog="${1%.ml}"
+    shift
+    local backend file out
+    for backend in $BACKENDS; do
+        file="$WASM_DIR/$prog.$backend.wasm"
+        out="$WASM_DIR/$prog.$backend.wasm.out"
+        printf "%-46s %-7s " "$prog.ml" "$backend"
+        if [ ! -f "$file" ]; then
+            echo "MISSING"
+            ((missing++))
+        elif $WIZENG "$file" "$@" > "$out" 2>&1; then
+            echo "OK"
+            ((pass++))
+        else
+            echo "FAIL"
+            ((fail++))
+        fi
+    done
 }
 
 # effects/
@@ -56,20 +73,19 @@ run effect-syntax/test10.ml
 run effect-syntax/test11.ml
 run effect-syntax/tutorial.ml
 
-# lib-effects/ (only files that were successfully compiled to wasm)
-#run lib-effects/assume_no_perform.ml       # jsoo-only API
-#run lib-effects/assume_no_perform_nested_handler.ml
-#run lib-effects/assume_no_perform_unhandled.ml
-#run lib-effects/concurrent.ml             # needed multi-file compilation
+# lib-effects/
+# assume_no_perform{,_unhandled,_nested_handler}.ml need the jsoo-only
+# Jsoo_runtime API and have no Wasm build.
+run lib-effects/concurrent.ml
 run lib-effects/deep_state.ml 3 100
-#run lib-effects/dyn_wind.ml               # ppx_expect
+run lib-effects/dyn_wind.ml
 run lib-effects/effects.ml
-#run lib-effects/eratosthenes.ml           # ppx_expect
-#run lib-effects/reify_reflect.ml          # ppx_expect
+run lib-effects/eratosthenes.ml
+run lib-effects/reify_reflect.ml
 run lib-effects/sched.ml
-#run lib-effects/state.ml                  # ppx_expect
-#run lib-effects/test_domain.ml            # ppx_expect
-#run lib-effects/transaction.ml            # ppx_expect
+run lib-effects/state.ml
+run lib-effects/test_domain.ml
+run lib-effects/transaction.ml
 
 # examples/
 run examples/ask.ml
@@ -80,5 +96,8 @@ run examples/many_stacks.ml
 run examples/random_jump.ml
 run examples/simple_handler.ml
 
+# tests-wasm_of_ocaml/
+run tests-wasm_of_ocaml/gh2093.ml
+
 echo ""
-echo "$pass passed, $fail failed"
+echo "$pass passed, $fail failed, $missing missing"

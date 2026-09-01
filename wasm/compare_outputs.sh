@@ -2,29 +2,39 @@
 
 WASM_DIR="$(dirname "$0")"
 
+# Each program is built for both effects backends; both are compared against
+# the same reference output, produced by the OCaml interpreter.
+BACKENDS="native cps"
+
 pass=0
 fail=0
 missing=0
 
+# compare <program.ml>
 compare() {
-    local ml_out="$WASM_DIR/${1%.ml}.ml.out"
-    local wasm_out="$WASM_DIR/${1%.ml}.wasm.out"
-    printf "%-55s " "$1"
+    local prog="${1%.ml}"
+    local ml_out="$WASM_DIR/$prog.ml.out"
+    local backend wasm_out
 
-    if [ ! -f "$ml_out" ]; then
-        echo "MISSING ml.out"
-        ((missing++))
-    elif [ ! -f "$wasm_out" ]; then
-        echo "MISSING wasm.out"
-        ((missing++))
-    elif diff -q "$ml_out" "$wasm_out" > /dev/null 2>&1; then
-        echo "OK"
-        ((pass++))
-    else
-        echo "DIFF"
-        diff "$ml_out" "$wasm_out"
-        ((fail++))
-    fi
+    for backend in $BACKENDS; do
+        wasm_out="$WASM_DIR/$prog.$backend.wasm.out"
+        printf "%-46s %-7s " "$prog.ml" "$backend"
+
+        if [ ! -f "$ml_out" ]; then
+            echo "MISSING ml.out"
+            ((missing++))
+        elif [ ! -f "$wasm_out" ]; then
+            echo "MISSING $backend.wasm.out"
+            ((missing++))
+        elif diff -q "$ml_out" "$wasm_out" > /dev/null 2>&1; then
+            echo "OK"
+            ((pass++))
+        else
+            echo "DIFF"
+            diff "$ml_out" "$wasm_out"
+            ((fail++))
+        fi
+    done
 }
 
 # effects/
@@ -65,9 +75,18 @@ compare effect-syntax/test11.ml
 compare effect-syntax/tutorial.ml
 
 # lib-effects/
+# assume_no_perform{,_unhandled,_nested_handler}.ml need the jsoo-only
+# Jsoo_runtime API and have neither a native nor a Wasm run.
+compare lib-effects/concurrent.ml
 compare lib-effects/deep_state.ml
+compare lib-effects/dyn_wind.ml
 compare lib-effects/effects.ml
+compare lib-effects/eratosthenes.ml
+compare lib-effects/reify_reflect.ml
 compare lib-effects/sched.ml
+compare lib-effects/state.ml
+compare lib-effects/test_domain.ml
+compare lib-effects/transaction.ml
 
 # examples/
 compare examples/ask.ml
@@ -77,6 +96,9 @@ compare examples/hello.ml
 compare examples/many_stacks.ml
 compare examples/random_jump.ml
 compare examples/simple_handler.ml
+
+# tests-wasm_of_ocaml/
+compare tests-wasm_of_ocaml/gh2093.ml
 
 echo ""
 echo "$pass matched, $fail differed, $missing missing output files"
